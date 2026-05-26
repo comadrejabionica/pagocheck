@@ -144,7 +144,7 @@
 <script>
 // ─── CONFIG SUPABASE ───
 const SUPABASE_URL = 'https://xvyjxuzconworfymahaz.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_qXIe7b5x7ieYZHnJnOmPOA_xjRLFosoHEk';
+const SUPABASE_KEY = 'sb_publishable_qXIe7b5x7ieYZHnJnOmPOA_xjRLFnD6';
 
 // ─── ESTADO ───
 let currentUser = null;
@@ -156,7 +156,7 @@ async function sbFetch(path, opts={}){
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     headers: {
       'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Authorization': `Bearer ${SUPABASE_KEY}`, 'X-Client-Info': 'pagocheck',
       'Content-Type': 'application/json',
       'Prefer': opts.prefer || '',
       ...opts.headers
