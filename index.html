@@ -42,7 +42,7 @@
   .topbar-role{font-size:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:1px;padding:3px 8px;border-radius:20px;background:var(--surface2);border:1px solid var(--border);color:var(--accent2);}
   .btn-logout{background:none;border:1px solid var(--border);color:var(--muted);padding:6px 12px;border-radius:6px;font-family:var(--mono);font-size:11px;cursor:pointer;transition:border-color .2s,color .2s;}
   .btn-logout:hover{border-color:var(--warn);color:var(--warn);}
-  .main{flex:1;padding:24px;max-width:1100px;margin:0 auto;width:100%;}
+  .main{flex:1;padding:24px;max-width:1200px;margin:0 auto;width:100%;}
 
   /* STATS */
   .sv-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;margin-bottom:28px;}
@@ -56,6 +56,14 @@
   .stat-value.green{color:var(--accent);}
   .stat-value.purple{color:var(--accent2);}
   .stat-value.blue{color:#4fc3f7;}
+
+  /* TABS TITULARES */
+  .titulares-tabs{display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap;}
+  .tab-titular{padding:8px 16px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:var(--mono);font-size:12px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;}
+  .tab-titular:hover{border-color:var(--accent);color:var(--text);}
+  .tab-titular.active{background:var(--accent);border-color:var(--accent);color:#000;font-weight:700;}
+  .tab-titular .badge{background:rgba(0,0,0,.2);border-radius:10px;padding:1px 6px;font-size:10px;}
+  .tab-titular.active .badge{background:rgba(0,0,0,.3);}
 
   /* SECTION */
   .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
@@ -77,6 +85,7 @@
   .pay-nombre{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .pay-meta{font-size:11px;font-family:var(--mono);color:var(--muted);margin-top:3px;}
   .pay-id{font-size:10px;font-family:var(--mono);color:var(--border);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pay-titular-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-family:var(--mono);font-weight:700;margin-top:4px;}
   .pay-amount{font-size:16px;font-weight:800;letter-spacing:-0.5px;color:var(--accent);font-family:var(--mono);flex-shrink:0;}
   .pay-time{font-size:11px;font-family:var(--mono);color:var(--muted);flex-shrink:0;text-align:right;min-width:60px;}
   .btn-release{padding:8px 16px;background:var(--accent);border:none;border-radius:7px;color:#000;font-family:var(--sans);font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;transition:opacity .2s,transform .1s;white-space:nowrap;}
@@ -96,6 +105,8 @@
     .pay-amount{font-size:14px;}
     .sv-stats{grid-template-columns:1fr 1fr;}
     .topbar{padding:0 16px;}
+    .titulares-tabs{gap:6px;}
+    .tab-titular{padding:6px 12px;font-size:11px;}
   }
 </style>
 </head>
@@ -142,21 +153,32 @@
 <div id="toast"></div>
 
 <script>
-// ─── CONFIG SUPABASE ───
+// ─── CONFIG ───
 const SUPABASE_URL = 'https://xvyjxuzconworfymahaz.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_qXIe7b5x7ieYZHnJnOmPOA_xjRLFnD6';
+
+// ─── TITULARES ───
+const TITULARES = [
+  { id: 'todos',   nombre: 'Todos',         email: null,                           color: '#00e5a0' },
+  { id: 'yametti', nombre: 'F. Yametti',    email: 'fyametti@yahoo.com.ar',        color: '#7c6bff' },
+  { id: 'seba',    nombre: 'Seba P2',       email: 'sebastian_1993_5@hotmail.com', color: '#ff9f43' },
+  { id: 'bahia',   nombre: 'Bahia Support', email: 'eltoncapo1996@hotmail.com',    color: '#4fc3f7' },
+  { id: 'kk',      nombre: 'KK',            email: null,                           color: '#ff6b6b' },
+];
 
 // ─── ESTADO ───
 let currentUser = null;
 let pollInterval = null;
 let lastCount = 0;
+let allPagos = [];
+let filtroActivo = 'todos';
 
-// ─── SUPABASE API ───
+// ─── SUPABASE ───
 async function sbFetch(path, opts={}){
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     headers: {
       'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`, 'X-Client-Info': 'pagocheck',
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
       'Content-Type': 'application/json',
       'Prefer': opts.prefer || '',
       ...opts.headers
@@ -170,7 +192,7 @@ async function sbFetch(path, opts={}){
 }
 
 async function getPagos(){
-  return sbFetch('pagos?order=created_at.desc&limit=50');
+  return sbFetch('pagos?order=created_at.desc&limit=100');
 }
 
 async function updatePago(id, status){
@@ -182,24 +204,41 @@ async function updatePago(id, status){
 }
 
 // ─── HELPERS ───
+function getTitularByEmail(email){
+  if(!email) return null;
+  return TITULARES.find(t => t.email && t.email.toLowerCase() === email.toLowerCase());
+}
+
+function getTitularNombre(pago){
+  // primero usar titular_nombre si existe
+  if(pago.titular_nombre && pago.titular_nombre !== 'Desconocido') return pago.titular_nombre;
+  // sino buscar por email
+  const t = getTitularByEmail(pago.titular_email);
+  if(t && t.id !== 'todos' && t.id !== 'kk') return t.nombre;
+  return pago.titular_nombre || 'Sin asignar';
+}
+
+function getTitularColor(pago){
+  const nombre = getTitularNombre(pago);
+  const t = TITULARES.find(t => t.nombre === nombre);
+  return t ? t.color : '#6b6b8a';
+}
+
 function extractImporte(str){
   if(!str) return '—';
-  // buscar número en formato $ 1.380.000,00 o similar
   const m = String(str).match(/[\d\.]+,\d{2}/);
   if(m) return '$' + m[0].replace(',00','').replace(/\./g,',');
-  return str.length > 30 ? str.substring(0,30)+'…' : str;
+  if(str.includes('[Raya Cash]')) return '💳 Ver detalle';
+  return str.length > 25 ? str.substring(0,25)+'…' : str;
 }
 
 function formatTime(iso){
   if(!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+  return new Date(iso).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
 }
-
 function formatDate(iso){
   if(!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'});
+  return new Date(iso).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'});
 }
 
 // ─── LOGIN ───
@@ -231,7 +270,6 @@ function doLogout(){
 // ─── RENDER ───
 function renderApp(){ renderSupervisor(); }
 
-// ─── SUPERVISOR ───
 async function renderSupervisor(){
   const el = document.getElementById('main-content');
   el.innerHTML = `
@@ -249,84 +287,126 @@ async function renderSupervisor(){
         <div class="stat-value blue" id="stat-total">—</div>
       </div>
     </div>
+
+    <div class="titulares-tabs" id="titulares-tabs"></div>
+
     <div class="section-header">
-      <span class="section-title">Cobros · Raya Cash</span>
+      <span class="section-title" id="section-label">Cobros · Raya Cash</span>
       <span class="live-badge"><span class="live-dot"></span>En vivo</span>
     </div>
     <div class="loading" id="loading-msg">Cargando cobros...</div>
     <div class="payments-list" id="payments-list" style="display:none"></div>
   `;
   await loadAndRender();
-  // polling cada 15 segundos
   if(pollInterval) clearInterval(pollInterval);
   pollInterval = setInterval(loadAndRender, 15000);
 }
 
 async function loadAndRender(){
   try {
-    const pagos = await getPagos();
+    allPagos = await getPagos();
     const today = new Date().toDateString();
-    const todayPagos = pagos.filter(p => new Date(p.created_at).toDateString() === today);
-    const pending  = pagos.filter(p=>p.status==='pending').length;
+    const todayPagos = allPagos.filter(p => new Date(p.created_at).toDateString() === today);
+    const pending  = allPagos.filter(p=>p.status==='pending').length;
     const released = todayPagos.filter(p=>p.status==='released').length;
 
-    // actualizar stats
-    const sp = document.getElementById('stat-pending');
-    const sr = document.getElementById('stat-released');
-    const st = document.getElementById('stat-total');
-    if(sp) sp.textContent = pending;
-    if(sr) sr.textContent = released;
-    if(st) st.textContent = todayPagos.length;
+    const sp=document.getElementById('stat-pending');
+    const sr=document.getElementById('stat-released');
+    const st=document.getElementById('stat-total');
+    if(sp) sp.textContent=pending;
+    if(sr) sr.textContent=released;
+    if(st) st.textContent=todayPagos.length;
 
-    // notificar nuevos pagos
-    if(lastCount > 0 && pagos.length > lastCount){
+    if(lastCount > 0 && allPagos.length > lastCount){
       showToast(`💰 Nuevo cobro recibido · Raya Cash`);
     }
-    lastCount = pagos.length;
+    lastCount = allPagos.length;
 
-    // ocultar loading
-    const loading = document.getElementById('loading-msg');
-    const list = document.getElementById('payments-list');
+    const loading=document.getElementById('loading-msg');
+    const list=document.getElementById('payments-list');
     if(loading) loading.style.display='none';
     if(list) list.style.display='flex';
 
-    renderList(pagos);
+    renderTabs();
+    renderList();
   } catch(e){
-    const loading = document.getElementById('loading-msg');
-    if(loading) loading.textContent = 'Error al cargar. Reintentando...';
+    const loading=document.getElementById('loading-msg');
+    if(loading) loading.textContent='Error al cargar. Reintentando...';
     console.error(e);
   }
 }
 
-function renderList(pagos){
+function renderTabs(){
+  const container = document.getElementById('titulares-tabs');
+  if(!container) return;
+
+  container.innerHTML = TITULARES.map(t => {
+    // contar pagos de este titular
+    const count = t.id === 'todos'
+      ? allPagos.filter(p=>p.status==='pending').length
+      : allPagos.filter(p=>{
+          const nombre = getTitularNombre(p);
+          return nombre === t.nombre && p.status==='pending';
+        }).length;
+
+    const isActive = filtroActivo === t.id;
+    return `<button class="tab-titular ${isActive?'active':''}"
+      style="${isActive ? `background:${t.color};border-color:${t.color};` : `border-color:${t.color}33;color:${t.color};`}"
+      onclick="setFiltro('${t.id}')">
+      ${t.nombre}
+      ${count > 0 ? `<span class="badge">${count}</span>` : ''}
+    </button>`;
+  }).join('');
+}
+
+function setFiltro(id){
+  filtroActivo = id;
+  const label = document.getElementById('section-label');
+  const t = TITULARES.find(x=>x.id===id);
+  if(label) label.textContent = id==='todos' ? 'Cobros · Raya Cash' : `Cobros · ${t.nombre}`;
+  renderTabs();
+  renderList();
+}
+
+function renderList(){
   const list = document.getElementById('payments-list');
   if(!list) return;
-  if(!pagos.length){
-    list.innerHTML=`<div class="empty-state"><div class="empty-icon">💳</div>Sin cobros registrados aún.</div>`;
+
+  let filtered = allPagos;
+  if(filtroActivo !== 'todos'){
+    const t = TITULARES.find(x=>x.id===filtroActivo);
+    filtered = allPagos.filter(p => getTitularNombre(p) === t.nombre);
+  }
+
+  if(!filtered.length){
+    list.innerHTML=`<div class="empty-state"><div class="empty-icon">💳</div>Sin cobros para este titular.</div>`;
     return;
   }
-  list.innerHTML = pagos.map(p=>`
+
+  list.innerHTML = filtered.map(p => {
+    const tNombre = getTitularNombre(p);
+    const tColor  = getTitularColor(p);
+    return `
     <div class="payment-card ${p.status}" id="card-${p.id}">
       <div class="status-dot ${p.status}"></div>
       <div class="pay-info">
         <div class="pay-nombre">${p.nombre_originante||'Raya Cash'}</div>
-        <div class="pay-meta">Titular: <strong>${p.titular_email||'—'}</strong></div>
-        <div class="pay-id">ID: ${p.identificador||'—'}</div>
+        <div class="pay-meta">Email: ${p.titular_email||'—'}</div>
+        <span class="pay-titular-badge" style="background:${tColor}22;color:${tColor};border:1px solid ${tColor}44">${tNombre}</span>
       </div>
       <div class="pay-amount">${extractImporte(p.importe)}</div>
       <div class="pay-time">${formatDate(p.created_at)}<br>${formatTime(p.created_at)}</div>
       ${p.status==='pending'
         ? `<button class="btn-release" onclick="releasePayment(${p.id})">✓ Liberar</button>`
-        : `<span class="btn-released">✓ Liberado</span>`
-      }
-    </div>
-  `).join('');
+        : `<span class="btn-released">✓ Liberado</span>`}
+    </div>`
+  }).join('');
 }
 
 async function releasePayment(id){
   try {
     await updatePago(id, 'released');
-    const card = document.getElementById(`card-${id}`);
+    const card=document.getElementById(`card-${id}`);
     if(card){ card.style.background='rgba(0,229,160,.08)'; }
     await loadAndRender();
     showToast('✅ Mercadería liberada');
@@ -335,7 +415,6 @@ async function releasePayment(id){
   }
 }
 
-// ─── TOAST ───
 function showToast(msg){
   const t=document.getElementById('toast');
   t.textContent=msg; t.style.display='block';
